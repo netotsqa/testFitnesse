@@ -1,0 +1,168 @@
+
+
+plugins {
+    id 'java' // or 'groovy' Must be explicitly applied
+    id 'idea'
+    id 'maven'
+    id 'signing'
+    id 'com.github.johnrengelman.shadow' version '1.2.2'
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    provided
+}
+
+sourceSets {
+    main {
+        compileClasspath += configurations.provided
+        runtimeClasspath += configurations.provided
+        java {
+            srcDir 'src'
+        }
+        resources {
+            srcDir 'src'
+        }
+    }
+    test {
+        compileClasspath += configurations.provided
+        runtimeClasspath += configurations.provided
+        java {
+            srcDir 'test'
+        }
+    }
+}
+
+sourceCompatibility = '1.7'
+targetCompatibility = '1.7'
+
+dependencies {
+    compile "org.eclipse.jgit:org.eclipse.jgit:3.6.2.201501210735-r" // 4.6.0.201612231935-r
+    provided "org.fitnesse:fitnesse:20161106"
+
+    testCompile "junit:junit:4.12"
+}
+
+task("writeFitNesseClasspath", type: WriteFitNesseClasspath) {
+    classpath = configurations.compile + configurations.provided
+
+    pagePath = project.file("FitNesseRoot/GradleClasspath")
+}
+
+task run(type: JavaExec) {
+    dependsOn writeFitNesseClasspath
+    dependsOn compileJava
+    classpath = sourceSets.main.runtimeClasspath
+    main "fitnesseMain.FitNesseMain"
+    args "-p", "8000", "-e", "0"
+}
+
+task intTest(type: JavaExec) {
+    dependsOn writeFitNesseClasspath
+    dependsOn compileJava
+    dependsOn test
+    classpath = sourceSets.main.runtimeClasspath
+    main "fitnesseMain.FitNesseMain"
+    args "-c", "GitFileController?suite&format=text"
+}
+
+check.dependsOn intTest
+
+task javadocJar(type: Jar) {
+    classifier = 'javadoc'
+    from javadoc
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives javadocJar, sourcesJar, shadowJar
+}
+
+signing {
+    sign configurations.archives
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                authentication(userName: ossrhUsername, password: ossrhPassword)
+            }
+
+            pom.project {
+                name 'fitnesse-git-plugin'
+                packaging 'jar'
+                // optionally artifactId can be defined here
+                description 'Git version controller support for FitNesse'
+                url 'https://github.com/amolenaar/fitnesse-git-plugin'
+
+                scm {
+                    connection 'scm:git:git@github.com/amolenaar/fitnesse-git-plugin.git'
+                    developerConnection 'scm:git:git@github.com/amolenaar/fitnesse-git-plugin.git'
+                    url 'http://github.com/amolenaar/fitnesse-git-plugin'
+                }
+
+                licenses {
+                    license {
+                        name 'Common Public License version 1.0'
+                        url 'http://www.opensource.org/licenses/cpl1.0'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'amolenaar'
+                        name 'Arjan Molenaar'
+                        email 'gaphor@gmail.com'
+                    }
+                }
+            }
+        }
+    }
+}
+
+idea {
+    module {
+        scopes.PROVIDED.plus += [ configurations.provided ]
+    }
+}
+
+/// === Custom Tasks
+
+class WriteFitNesseClasspath extends DefaultTask {
+    @Input
+    def classpath
+
+    @OutputDirectory
+    File pagePath
+
+    @TaskAction
+    def generatePage() {
+        def contentTxt = project.file("${pagePath}/content.txt")
+        contentTxt.createNewFile()
+        contentTxt.withWriter { writer ->
+            writer.writeLine("!path ${project.sourceSets.main.output.classesDir}")
+            writer.writeLine("!path ${project.sourceSets.test.output.classesDir}")
+            classpath.each { d ->
+                writer.writeLine("!path $d")
+            }
+        }
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.6'
+}
