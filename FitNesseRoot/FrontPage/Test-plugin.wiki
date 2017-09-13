@@ -1,0 +1,5 @@
+<test page>
+
+Just checking the integration with git
+
+</test page>
