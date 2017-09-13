@@ -1,3 +1,7 @@
+---
+Help: test
+Suites: plugin
+---
 <test page>
 
 Just checking the integration with git
